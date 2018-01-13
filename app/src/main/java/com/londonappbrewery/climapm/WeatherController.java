@@ -2,6 +2,7 @@ package com.londonappbrewery.climapm;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -11,15 +12,26 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.loopj.android.http.AsyncHttpClient;
+import com.loopj.android.http.JsonHttpResponseHandler;
+import com.loopj.android.http.RequestParams;
+
+import org.json.JSONObject;
+
+import cz.msebera.android.httpclient.Header;
 
 
 public class WeatherController extends AppCompatActivity {
 
     // Constants:
     final int REQUEST_CODE = 123;
+    // API base url
     final String WEATHER_URL = "http://api.openweathermap.org/data/2.5/weather";
     // App ID to use OpenWeather data
     final String APP_ID = "6b726063d6fddce48280e9dcf29d25a6";
@@ -54,7 +66,15 @@ public class WeatherController extends AppCompatActivity {
 
 
         // TODO: Add an OnClickListener to the changeCityButton here:
-
+        changeCityButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                //context, what the intent is for
+                //intents allow sending and receiving request ie share-share intent is created
+                Intent myIntent = new Intent(WeatherController.this, ChangeCityController.class);
+                startActivity(myIntent);
+            }
+        });
     }
 
 
@@ -63,13 +83,32 @@ public class WeatherController extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         Log.d("Clima:", "onResume() called");
-        Log.d("Clima", "getting weather for current location");
-        getWeatherForCurrentLocation();
+
+        Intent myIntent = getIntent();
+        String city = myIntent.getStringExtra("City");
+
+        // if enters new city name, retrieve new city data, else retrieve current location
+        if (city != null) {
+            getWeatherForNewCity(city);
+
+        } else {
+            Log.d("Clima", "getting weather for current location");
+            getWeatherForCurrentLocation();
+        }
+
+
     }
 
 
     // TODO: Add getWeatherForNewCity(String city) here:
+    public void getWeatherForNewCity(String city) {
 
+        RequestParams params = new RequestParams();
+
+        params.put("q",city);
+        params.put("appid", APP_ID);
+        letsDoSomeNetworking(params);
+    }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -78,7 +117,7 @@ public class WeatherController extends AppCompatActivity {
         // check if request code matches what we gave
         if (requestCode == REQUEST_CODE) {
 
-            //
+            // check if permission is granted by user
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 Log.d("Clima", "onRequestPermissionResult(): granted!");
                 getWeatherForCurrentLocation();
@@ -102,6 +141,13 @@ public class WeatherController extends AppCompatActivity {
 
                 Log.d("Clima: ", "Longitude: " + longitude);
                 Log.d("Clima: ", "Latitude: " + latitude);
+
+                RequestParams params = new RequestParams();
+                params.put("lat", latitude);
+                params.put("lon", longitude);
+                params.put("appid", APP_ID);
+
+                letsDoSomeNetworking(params);
             }
 
             @Override
@@ -140,15 +186,57 @@ public class WeatherController extends AppCompatActivity {
 
 
     // TODO: Add letsDoSomeNetworking(RequestParams params) here:
+    private void letsDoSomeNetworking(RequestParams params) {
 
+        AsyncHttpClient client = new AsyncHttpClient(); // perform http requests so that app won't freeze when app is retrieving data from server
+
+        client.get(WEATHER_URL, params, new JsonHttpResponseHandler() {
+
+            //when request is successful
+            @Override
+            public void onSuccess(int statusCode, Header[] headers, JSONObject response) {
+                Log.d("Clima ", "Success! JSON: " + response.toString());
+
+                // pass JSON to dataModel
+                WeatherDataModel dataModel = WeatherDataModel.fromJson(response);
+                // update UI after retrieving dataModel
+                updateUI(dataModel);
+            }
+
+            @Override
+            public void onFailure(int statusCode, Header[] headers, Throwable e, JSONObject errorResponse) {
+
+                Log.e("Clima: ", "Fail " + e.toString());
+                Log.d("Clima", "Status code " + statusCode);
+                Toast.makeText(WeatherController.this, "Request failed", Toast.LENGTH_LONG).show();
+            }
+        });
+
+    }
 
 
     // TODO: Add updateUI() here:
+    public void updateUI(WeatherDataModel dataModel) {
+        mTemperatureLabel.setText(dataModel.getTemperature());
+        mCityLabel.setText(dataModel.getCity());
 
+        // only know the name of the file therefore use resourceId
+        int resourceID = getResources().getIdentifier(dataModel.getIconName(),"drawable", getPackageName());
+        mWeatherImage.setImageResource(resourceID);
+
+    }
 
 
     // TODO: Add onPause() here:
+    // to stop updating location when leaves foreground
+    @Override
+    protected void onPause() {
+        super.onPause();
 
+        if (mLocationManager != null) {
+            mLocationManager.removeUpdates(mLocationListener);
+        }
+    }
 
 
 }
